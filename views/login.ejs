@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <h2>Login to Your Account</h2>
+            <% if (error) { %>
+                <p class="error">
+                    <%= error %>
+                </p>
+                <% } %>
+                    <form action="/login" method="POST" id="login">
+                        <div class="input-group">
+                            <input type="text" id="username" name="username" placeholder="Enter your username" required>
+                        </div>
+                        <div class="input-group">
+                            <input type="password" id="password" name="password" placeholder="Enter your password"
+                                required>
+                        </div>
+                        <div class="action-group">
+                            <button type="submit">Login</button>
+                        </div>
+                    </form>
+                    <div class="login-footer">
+                        <p>Don't have an account? <a href="/register">Sign up</a></p>
+                    </div>
+        </div>
+    </div>
+</body>
+
+<script>
+    // Get the current URL and query parameters
+    const currentQuery = window.location.search;
+    // Set the form action to the current URL with the query parameters
+    document.getElementById('login').action += currentQuery ? currentQuery : '';
+</script>
+
+</html>
