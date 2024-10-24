@@ -1,0 +1,4 @@
+[submodule "todennus-proto"]
+	path = todennus-proto
+	url = git@github.com:xybor/todennus-proto.git
+	branch = dev
