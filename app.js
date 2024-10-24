@@ -8,6 +8,21 @@ const app = express();
 
 require('dotenv').config();
 
+const grpc = require('@grpc/grpc-js');
+const protoLoader = require('@grpc/proto-loader');
+const { log } = require('console');
+
+// Load the proto file
+const PROTO_PATH = path.join(__dirname, 'todennus-proto');
+const userPackageDefinition = protoLoader.loadSync(path.join(PROTO_PATH, 'user.proto'), {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    includeDirs: [PROTO_PATH], // Add the base proto path for imports
+});
+const userProto = grpc.loadPackageDefinition(userPackageDefinition);
+
 const logger = winston.createLogger({
     level: 'debug', // Set the default log level
     format: winston.format.combine(
@@ -39,48 +54,47 @@ app.get('/login', (req, res) => {
     res.render('login', { error: req.query.error });
 });
 
+const userRPCClient = new userProto.todennus.proto.service.User(env.USER_VALIDATION_GRPC, grpc.credentials.createInsecure());
+
 // Handle login submission
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     const { authorization_id } = req.query;
     logger.debug('login-request', { 'authorization_id': authorization_id, 'username': username });
 
-    const userValidateURL = new URL(process.env.USER_VALIDATION_API)
-    const userValidateBody = {
+    const userValidateRequest = {
         'username': username,
         'password': password
     };
 
     const authCallbackBody = {};
+    userRPCClient.Validate(userValidateRequest, async (error, response) => {
+        if (error) {
+            logGrpcError(error);
+            const error_details = error.details.split(":")
 
-    await axios.post(userValidateURL.href, userValidateBody).then(response => {
-        logger.debug('user-validate-response', { 'status': response.status, 'data': response.data })
-        if (response.status != 200) {
             authCallbackBody.success = false;
-            authCallbackBody.error = response.data.error;
-            authCallbackBody.error_description = response.data.error_description;
+            authCallbackBody.error = error_details[0];
+            if (error_details.length > 1) {
+                authCallbackBody.error_description = error_details[1];
+            }
         } else {
             authCallbackBody.success = true;
-            authCallbackBody.user_id = response.data.data.id;
-            authCallbackBody.username = response.data.data.username;
+            authCallbackBody.user_id = response.user.id;
+            authCallbackBody.username = response.user.username;
         }
-    }).catch(error => {
-        logger.warn('failed-to-validate-user:', { 'response': error.response.data });
-        authCallbackBody.success = false;
-        authCallbackBody.error = error.response.data.error;
-        authCallbackBody.error_description = error.response.data.error_description;
-    });
 
-    authCallbackBody.idp_secret = process.env.TODENNUS_IDP_SECRET;
-    authCallbackBody.authorization_id = authorization_id;
+        authCallbackBody.idp_secret = env.TODENNUS_IDP_SECRET;
+        authCallbackBody.authorization_id = authorization_id;
 
-    const authCallbackURL = new URL(process.env.TODENNUS_AUTH_CALLBACK_URL)
-    await axios.post(authCallbackURL.href, authCallbackBody).then(response => {
-        logger.debug('auth-callback-response', { 'status': response.status, 'data': response.data })
-        res.redirect(301, process.env.TODENNUS_SESSION_UPDATE_URL + '?authentication_id=' + response.data.data.authentication_id)
-    }).catch(error => {
-        logger.warn('failed-to-auth-callback', { 'response': error });
-        res.write('invalid response')
+        const authCallbackURL = new URL(env.TODENNUS_AUTH_CALLBACK_URL)
+        await axios.post(authCallbackURL.href, authCallbackBody).then(response => {
+            logger.debug('auth-callback-response', { 'status': response.status, 'data': response.data })
+            res.redirect(301, env.TODENNUS_SESSION_UPDATE_URL + '?authentication_id=' + response.data.data.authentication_id)
+        }).catch(error => {
+            logger.warn('failed-to-auth-callback', { 'response': error });
+            res.write('invalid todennus response')
+        });
     });
 });
 
@@ -89,3 +103,35 @@ app.post('/login', async (req, res) => {
 app.listen(3000, () => {
     console.log('Server is running on http://localhost:3000');
 });
+
+
+// Handle gRPC errors
+function logGrpcError(error) {
+    if (error) {
+        var key = 'unknown';
+        switch (error.code) {
+            case grpc.status.NOT_FOUND:
+                key = 'not-found';
+                break;
+            case grpc.status.INVALID_ARGUMENT:
+                key = 'invalid-argument';
+                break;
+            case grpc.status.UNAVAILABLE:
+                key = 'unavailable';
+                break;
+            case grpc.status.DEADLINE_EXCEEDED:
+                key = 'deadline-exceeded';
+                break;
+            case grpc.status.PERMISSION_DENIED:
+                key = 'permission-denined';
+                break;
+            default:
+                key = 'unknown-code:', error.code;
+                break;
+        }
+
+        // Get the error code and message from the error object
+        logger.warn(key, { 'detail': error.details });
+
+    }
+}

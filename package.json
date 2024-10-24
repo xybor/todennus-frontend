@@ -18,6 +18,8 @@
   },
   "homepage": "https://github.com/xybor/todennus-idp#readme",
   "dependencies": {
+    "@grpc/grpc-js": "^1.12.2",
+    "@grpc/proto-loader": "^0.7.13",
     "axios": "^1.7.7",
     "body-parser": "^1.20.3",
     "dotenv": "^16.4.5",
